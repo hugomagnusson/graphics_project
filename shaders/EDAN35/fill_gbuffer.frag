@@ -38,5 +38,21 @@ void main()
 		geometry_specular = texture(specular_texture, fs_in.texcoord);
 
 	// Worldspace normal
-	geometry_normal.xyz = vec3(0.0);
+	vec3 N = normalize(fs_in.normal);
+	vec3 B = normalize(fs_in.binormal);
+	vec3 T = normalize(fs_in.tangent);
+	mat4 TBN = mat4(
+		vec4(T, 0.0),
+		vec4(B, 0.0),
+		vec4(N, 0.0),
+		vec4(0.0, 0.0, 0.0, 0.0)
+		);
+
+	vec4 normal = vec4(0.0, 0.0, 0.0, 0.0);
+	geometry_normal.xyz = vec4(normal_model_to_world * vec4(fs_in.normal, 0.0)).xyz * 0.5 + 0.5;
+	if (has_normals_texture) {
+		normal = 2 * texture(normals_texture, fs_in.texcoord) - 1.0;
+		geometry_normal.xyz = (normalize(normal_model_to_world * vec4(TBN * normal)).xyz * 0.5 + 0.5);
+	}
+
 }

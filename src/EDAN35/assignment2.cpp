@@ -30,7 +30,7 @@ namespace constant
 
 	constexpr float  scale_lengths       = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
-	constexpr size_t lights_nb           = 4;
+	constexpr size_t lights_nb           = 6;
 	constexpr float  light_intensity     = 72.0f * (scale_lengths * scale_lengths);
 	constexpr float  light_angle_falloff = glm::radians(37.0f);
 }
@@ -462,7 +462,9 @@ edan35::Assignment2::run()
 
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbos[toU(FBO::GBuffer)]);
 			glViewport(0, 0, framebuffer_width, framebuffer_height);
-			glClear(GL_DEPTH_BUFFER_BIT);
+            glClearDepthf(1.0f);
+            glClearColor(0.5f, 0.6f, 0.7f, 1.0f);
+			glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 			// XXX: Is any other clearing needed?
 
 			glUseProgram(fill_gbuffer_shader);
@@ -530,6 +532,9 @@ edan35::Assignment2::run()
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbos[toU(FBO::LightAccumulation)]);
 			glViewport(0, 0, framebuffer_width, framebuffer_height);
 			// XXX: Is any clearing needed?
+            glClearDepthf(1.0f);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear( GL_COLOR_BUFFER_BIT);
 			for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
 				auto const& lightTransform = lightTransforms[i];
 				auto const light_view_matrix = lightOffsetTransform.GetMatrixInverse() * lightTransform.GetMatrixInverse();
@@ -545,6 +550,11 @@ edan35::Assignment2::run()
 				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbos[toU(FBO::ShadowMap)]);
 				glViewport(0, 0, constant::shadowmap_res_x, constant::shadowmap_res_y);
 				// XXX: Is any clearing needed?
+                
+                glClearDepthf(1.0f);
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
 
 				glUseProgram(fill_shadowmap_shader);
 				glUniform1i(fill_shadowmap_shader_locations.light_index, static_cast<int>(i));
@@ -865,8 +875,43 @@ int main()
 
 namespace
 {
+
+float lerp(float a, float b, float f)
+{
+    return a + f * (b - a);
+}
+
 Textures createTextures(GLsizei framebuffer_width, GLsizei framebuffer_height)
 {
+    std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // random floats between [0.0, 1.0]
+    std::default_random_engine generator;
+    std::vector<glm::vec3> ssaoKernel;
+    for (unsigned int i = 0; i < 64; ++i)
+    {
+        glm::vec3 sample(
+            randomFloats(generator) * 2.0 - 1.0,
+            randomFloats(generator) * 2.0 - 1.0,
+            randomFloats(generator)
+        );
+        sample  = glm::normalize(sample);
+        sample *= randomFloats(generator);
+        float scale = (float)i / 64.0;
+        scale   = lerp(0.1f, 1.0f, scale * scale);
+        sample *= scale;
+        ssaoKernel.push_back(sample);
+     }
+    
+    // Generate noise
+    std::vector<glm::vec3> ssaoNoise;
+    for (unsigned int i = 0; i < 16; i++)
+    {
+        glm::vec3 noise(
+            randomFloats(generator) * 2.0 - 1.0,
+            randomFloats(generator) * 2.0 - 1.0,
+            0.0f);
+        ssaoNoise.push_back(noise);
+    }
+    
 	Textures textures;
 	glGenTextures(static_cast<GLsizei>(textures.size()), textures.data());
 
@@ -901,6 +946,10 @@ Textures createTextures(GLsizei framebuffer_width, GLsizei framebuffer_height)
 	glBindTexture(GL_TEXTURE_2D, textures[toU(Texture::Result)]);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, framebuffer_width, framebuffer_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 	utils::opengl::debug::nameObject(GL_TEXTURE, textures[toU(Texture::Result)], "Final result");
+    
+    glGenTextures(1, &noiseTexture);
+    glBindTexture(GL_TEXTURE_2D, noiseTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
 
 	glBindTexture(GL_TEXTURE_2D, 0u);
 	return textures;
